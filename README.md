@@ -190,9 +190,11 @@ tensor-throughput comparison; a loaded driver alone is not proof.
 ## Hardware status
 
 Verified on a single 24 GB RTX 4090 on 2026-11-06: the tensor payload unlocked
-the SM rates (all zero = full), and the bar1 payload raised the BAR1 capability
-to 64 GiB while restoring the original size control so the NVIDIA driver stayed
-healthy. See [docs/HARDWARE-24G.md](docs/HARDWARE-24G.md). Eight-card 64 GiB
+the SM rates (all zero = full), the bar1 payload raised the BAR1 capability to
+64 GiB, and `bar1_rebar64=true` + `pci=realloc` produced a usable 64 GiB BAR1
+(`nvidia-smi` BAR1 Total 65536 MiB) with the driver healthy. The
+`bar1_rebar64=false` path was also verified with the original 256 MB size
+restored. See [docs/HARDWARE-24G.md](docs/HARDWARE-24G.md). Eight-card 64 GiB
 allocation is still a topology/`pci=realloc` test.
 
 ## Bring-up

@@ -108,9 +108,12 @@ lspci -vv -s 01:00.0 | grep -A10 -i 'resizable bar'
 ```
 
 Expected BAR1 size `68719476736` and `nvidia-smi` `BAR1 Total: 65536 MiB`.
-If Linux keeps 32 GiB, check that `pci=realloc` is actually on the running
-kernel (`cat /proc/cmdline`) and that the bridge windows have room. The app
-does not reallocate the bus.
+This was verified on a single 24 GB 4090: the first kernel pass reported
+`can't assign; no space`, the `pci=realloc` retry assigned
+`0x29000000000-0x29fffffffff`, and the driver loaded with BAR1 65536 MiB.
+If Linux keeps the old size, check that `pci=realloc` is actually on the
+running kernel (`cat /proc/cmdline`) and that the bridge windows have room.
+The app does not reallocate the bus.
 
 ## 5. All cards
 

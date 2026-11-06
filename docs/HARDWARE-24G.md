@@ -69,7 +69,57 @@ read_sm_rates: all zero (full rate)
 
 So on this 24 GB card the payload raised the BAR1 capability to 64 GiB, and
 restoring the pre-payload size control kept the NVIDIA driver usable. No 64 GiB
-resource was assigned; that is the intended `bar1_rebar64=false` state.
+resource was assigned in this mode; that is the intended
+`bar1_rebar64=false` state.
+
+## 64 GiB BAR1 with `pci=realloc`
+
+Then `bar1_rebar64=true` and `pci=realloc` were added to the Debian kernel
+command line, followed by a cold boot. The app left the size control at 64 GiB:
+
+```
+ReBAR post-FLR: ... ctrl=0x00001001 size_index=16
+ReBAR: BAR1 size control 0x00001001 -> 0x00001001 ... (64G selected=true)
+```
+
+The kernel first failed the normal pass, then the `pci=realloc` retry moved the
+BAR and expanded the bridge window:
+
+```
+pci 0000:01:00.0: BAR 1 [mem size 0x1000000000 64bit pref]: can't assign; no space
+pci 0000:01:00.0: BAR 1 ... failed to assign
+pci_bus 0000:00: No. 2 try to assign unassigned res
+pci 0000:00:01.1: bridge window [mem 0x28800000000-0x29fffffffff 64bit pref]: assigned
+pci 0000:01:00.0: BAR 1 [mem 0x29000000000-0x29fffffffff 64bit pref]: assigned
+```
+
+Result:
+
+```
+lspci: BAR 1: current size: 64GB, supported: ... 32GB 64GB
+/sys/.../resource1: 68719476736 bytes
+nvidia-smi -q: BAR1 Total: 65536 MiB, Used: 2 MiB
+nvidia-smi: RTX 4090, 24564 MiB, driver 590.48.01, healthy
+read_sm_rates: all zero (full rate)
+```
+
+So a single 24 GB 4090 can carry a usable 64 GiB BAR1 aperture with
+`pci=realloc`. The 24 GB framebuffer is unaffected; BAR1 is the aperture, not
+VRAM.
+
+### Why the upstream report says 32 GiB after FLR
+
+The kernel module lives inside Linux, so after its FLR the Linux PCI core
+restores the cached 32 GiB size control. The EFI app has no Linux PCI core; the
+FLR leaves the hardware at the payload's 64 GiB setting. `bar1_rebar64=true`
+is therefore the explicit "set current to 64 GiB after FLR" option, and
+`bar1_rebar64=false` restores the pre-payload size captured before the
+transaction. Both modes are now hardware-verified:
+
+| Config | After FLR | Linux/driver |
+|---|---|---|
+| `bar1_rebar64=false` | restore pre-payload size (256 MB here) | driver loads without `pci=realloc`; CAP still advertises 64 GiB |
+| `bar1_rebar64=true` + `pci=realloc` | 64 GiB | kernel assigns 64 GiB; driver loads; `nvidia-smi` BAR1 65536 MiB |
 
 ### What failed first
 
@@ -92,8 +142,10 @@ the FLR when `bar1_rebar64=false`; that is the version verified above.
 - `Boot0000` Ada Unlock points at `\EFI\ada-unlock\ada-unlock.efi`.
 - `Boot000C` stock `debian` (shimx64) remains in the boot menu.
 - `BootOrder: 0000,000C,0004` (Ada Unlock first, stock second).
-- `/boot/efi/ada-unlock.ini` is the `tensor-bar1`, `bar1_rebar64=false` config.
+- `/boot/efi/ada-unlock.ini` is the `tensor-bar1`, `bar1_rebar64=true` config.
+- `pci=realloc` is on the Debian kernel command line.
 - `/boot/efi/ada-unlock.log` is the latest run.
+- The current boot has a 64 GiB BAR1 resource and `nvidia-smi` BAR1 Total 65536 MiB.
 - The old `gpu-unlock` packages are purged; kernel cmdline and initramfs are
   clean. `/root/ada-unlock-backup/20261106-212409` holds the pre-change config,
   initrd, package list and PCI/NVIDIA dumps.
