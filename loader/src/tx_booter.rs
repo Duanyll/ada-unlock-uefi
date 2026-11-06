@@ -384,7 +384,12 @@ fn pre_flr_selectors(gpu: &TxGpu) -> Result<(u32, u32), TxError> {
 
 /// Pre-FLR checks, one FLR, post-FLR selector/WPR2 checks, the bar1
 /// construct check, and the optional 64 GiB ReBAR selection.
-pub fn flr_phase(gpu: &TxGpu, bar1_64g: bool, rebar64: bool) -> Result<(), TxError> {
+pub fn flr_phase(
+    gpu: &TxGpu,
+    bar1_64g: bool,
+    rebar64: bool,
+    bar1_ctrl: Option<u32>,
+) -> Result<(), TxError> {
     pre_flr_selectors(gpu)?;
     crate::tx::flr_reset(gpu.pci)?;
 
@@ -428,8 +433,16 @@ pub fn flr_phase(gpu: &TxGpu, bar1_64g: bool, rebar64: bool) -> Result<(), TxErr
             if let Err(e) = bar1::select_64g(gpu.pci) {
                 info!("post-FLR bar1: 64G ReBAR selection failed ({e:?}); the unlock is intact, Linux can resize later");
             }
+        } else if let Some(saved) = bar1_ctrl {
+            // The payload itself leaves the current size control at 64 GiB.
+            // Without pci=realloc/Linux resource assignment that makes the
+            // NVIDIA driver fail with "BAR1 is 0M". Put the pre-payload size
+            // back; the 64 GiB capability stays in the CAP.
+            if let Err(e) = bar1::restore(gpu.pci, saved) {
+                info!("post-FLR bar1: restoring the pre-payload BAR1 size failed ({e:?}); current size control may still be 64 GiB");
+            }
         } else {
-            info!("post-FLR bar1: ReBAR control left alone (bar1_rebar64=false)");
+            info!("post-FLR bar1: no saved BAR1 control; leaving ReBAR alone");
         }
     }
     Ok(())

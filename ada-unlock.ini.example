@@ -4,8 +4,11 @@
 # tensor-bar1 = compute unlock + 64 GiB BAR1 construct
 payload = tensor-bar1
 
-# After the FLR, select the 64 GiB ReBAR size for BAR1. The app deliberately
-# does not move the BAR or reassign the bus; Linux must boot with pci=realloc.
+# true:  after the FLR, select the 64 GiB ReBAR size and leave it.
+#        Requires Linux to reassign the BAR/bridge windows (pci=realloc).
+# false: after the FLR, restore the pre-payload BAR1 size. The 64 GiB
+#        capability stays in the ReBAR CAP; the driver keeps working without
+#        a 64 GiB resource assignment.
 bar1_rebar64 = true
 
 # The Debian bootloader to start after the unlock.

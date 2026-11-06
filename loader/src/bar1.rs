@@ -48,6 +48,38 @@ fn find_bar1(pci: &PciIo) -> Option<Entry> {
     None
 }
 
+/// Snapshot the BAR1 size control before the payload changes it. The
+/// capability is captured too, but the control is what Linux reads as the
+/// current BAR1 size.
+pub fn capture(pci: &PciIo) -> Option<u32> {
+    find_bar1(pci).map(|e| e.ctrl)
+}
+
+/// Put the BAR1 size control back to the pre-payload selection. The 64 GiB
+/// capability stays in the ReBAR CAP; only the current aperture shrinks back
+/// to what firmware/Linux had. This is the bar1 payload without a 64 GiB
+/// resource assignment.
+pub fn restore(pci: &PciIo, saved: u32) -> Result<(), TxError> {
+    let Some(e) = find_bar1(pci) else {
+        info!("ReBAR: no BAR1 ReBAR entry to restore");
+        return Err(TxError::Unsupported);
+    };
+    let current = e.ctrl;
+    let new = (current & !PCI_REBAR_CTRL_BAR_SIZE) | (saved & PCI_REBAR_CTRL_BAR_SIZE);
+    pci.config_write_u32(e.ctrl_off, new);
+    let rb = pci.config_read_u32(e.ctrl_off);
+    info!(
+        "ReBAR: restored BAR1 size control to {:#010x} (readback {rb:#010x}, size_index={})",
+        saved,
+        (rb & PCI_REBAR_CTRL_BAR_SIZE) >> 8
+    );
+    if rb & PCI_REBAR_CTRL_BAR_SIZE != saved & PCI_REBAR_CTRL_BAR_SIZE {
+        return Err(TxError::Io);
+    }
+    report(pci, "after-restore");
+    Ok(())
+}
+
 pub fn report(pci: &PciIo, phase: &str) {
     let Some(e) = find_bar1(pci) else {
         info!("ReBAR {phase}: no ReBAR capability with a BAR1 entry");

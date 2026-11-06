@@ -74,12 +74,13 @@ Cold boot. Expected:
 TX-bar1: pre-check CYA=0x28 CFG=0x80000009
 post-boot bar1: CYA=0x30 CFG=0x8000000a XVE_PLM=0xffffffff
 post-FLR bar1: CYA=0x30 CFG=0x8000000a XVE_PLM=0xffffffff FEAT_PLM=0xffffffff
-ReBAR post-FLR: CAP=0x001ffc00 ... 64G_supported=true ...
-post-FLR bar1: ReBAR control left alone (bar1_rebar64=false)
+ReBAR post-FLR: CAP=0x001ffc00 ... 64G_supported=true ... size_index=16
+ReBAR: restored BAR1 size control to 0x00000801 (readback ... size_index=8)
 ```
 
-The standard ReBAR capability should now advertise 64 GiB. The BAR1 resource is
-still whatever size firmware/Linux chose.
+The standard ReBAR capability now advertises 64 GiB, while the current BAR1
+size is restored to what firmware/Linux had. The NVIDIA driver must load
+normally; `lspci` shows the 64 GiB entry in the supported list.
 
 ## 4. BAR1 construct + 64 GiB ReBAR
 

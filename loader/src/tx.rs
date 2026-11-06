@@ -259,6 +259,9 @@ pub fn run_transaction(gpu: &TxGpu, assets: &TxAssets, rebar64: bool) -> Result<
         }
     }
 
+    let bar1_ctrl = if assets.bar1_64g { crate::bar1::capture(gpu.pci) } else { None };
+    info!("TX-bar1: saved ReBAR BAR1 control={bar1_ctrl:?}");
+
     let mut dma = DmaBuffers {
         booter: gpu.pci.dma_alloc(assets.booter.len()).map_err(|_| TxError::NoDevice)?,
         sig: gpu.pci.dma_alloc(V67_SIZE).map_err(|_| TxError::NoDevice)?,
@@ -267,7 +270,7 @@ pub fn run_transaction(gpu: &TxGpu, assets: &TxAssets, rebar64: bool) -> Result<
         boot: gpu.pci.dma_alloc(assets.gsp_boot.len()).map_err(|_| TxError::NoDevice)?,
         radix: None,
     };
-    let result = run_with_dma(gpu, assets, rebar64, &mut dma);
+    let result = run_with_dma(gpu, assets, rebar64, bar1_ctrl, &mut dma);
     if result.is_err() {
         info!("TX: failed; FLR before releasing the DMA buffers");
         let _ = flr_reset(gpu.pci);
@@ -279,6 +282,7 @@ fn run_with_dma(
     gpu: &TxGpu,
     assets: &TxAssets,
     rebar64: bool,
+    bar1_ctrl: Option<u32>,
     dma: &mut DmaBuffers,
 ) -> Result<(), TxError> {
     use crate::tx_booter as tb;
@@ -353,7 +357,7 @@ fn run_with_dma(
     core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
     info!("TX: stock signature restored");
 
-    tb::flr_phase(gpu, assets.bar1_64g, rebar64)?;
+    tb::flr_phase(gpu, assets.bar1_64g, rebar64, bar1_ctrl)?;
     handoff_log(gpu, assets.bar1_64g);
     info!("TX: card complete");
     Ok(())

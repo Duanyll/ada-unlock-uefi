@@ -48,8 +48,11 @@ chainload = \EFI\debian\grubx64.efi
 log = \ada-unlock.log
 ```
 
-After the tensor path is verified, switch to `payload = tensor-bar1` and
-`bar1_rebar64 = true` for the 64 GiB test.
+After the tensor path is verified, switch to `payload = tensor-bar1` with
+`bar1_rebar64 = false` first. That opens the 64 GiB capability but restores
+the original BAR1 size, so the driver stays usable. Only set
+`bar1_rebar64 = true` (with `pci=realloc`) when you actually want Linux to
+assign the 64 GiB aperture.
 
 ## 4. Add the boot entry
 

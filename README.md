@@ -125,7 +125,12 @@ log = \ada-unlock.log
 - `payload = tensor-bar1`: compute unlock plus the `CYA=0x30` / `CFG=0x8000000a`
   64 GiB BAR1 construct.
 - `bar1_rebar64 = true`: after the FLR, write the standard ReBAR BAR1 size
-  control to the 64 GiB entry. Requires `payload = tensor-bar1`.
+  control to the 64 GiB entry and leave it. Requires `payload = tensor-bar1`
+  and Linux `pci=realloc`.
+- `bar1_rebar64 = false`: after the FLR, restore the BAR1 size control to the
+  value captured before the payload. The payload's 64 GiB capability stays in
+  the ReBAR CAP, but Linux is not asked to allocate a 64 GiB resource. This is
+  the usable bar1 state on a 24 GB card and the safe default while testing.
 - `targets`: omit or `all` for every applicable GPU; otherwise a comma-separated
   list of full PCI addresses.
 - `log`: file on the ESP. Every line also goes to UEFI ConOut, which is what
@@ -155,8 +160,9 @@ the bridge-window layout work described in the upstream
 [bar1 report](https://github.com/84634E1A607A/gpu-unlock-4090-48g-64g-bar1/blob/main/docs/bar1-64g-report.md).
 
 If `bar1_rebar64 = false`, the payload still opens the 64 GiB hardware
-capability but the ReBAR size control is left alone. Linux can resize it later
-with `resource1_resize` if the bridge windows allow it.
+capability, but the app restores the pre-payload size control after the FLR.
+Linux keeps the original BAR1 assignment and the NVIDIA driver loads; the
+64 GiB entry remains visible in the ReBAR CAP for later experiments.
 
 ## Verify
 
@@ -180,6 +186,14 @@ With the 64 GiB selection and a successful `pci=realloc`, the BAR1 resource
 size is `68719476736` and `nvidia-smi -q` reports `BAR1 Total: 65536 MiB`.
 The compute unlock is verified by the `SS0/SS1` readback and an FP16/BF16
 tensor-throughput comparison; a loaded driver alone is not proof.
+
+## Hardware status
+
+Verified on a single 24 GB RTX 4090 on 2026-11-06: the tensor payload unlocked
+the SM rates (all zero = full), and the bar1 payload raised the BAR1 capability
+to 64 GiB while restoring the original size control so the NVIDIA driver stayed
+healthy. See [docs/HARDWARE-24G.md](docs/HARDWARE-24G.md). Eight-card 64 GiB
+allocation is still a topology/`pci=realloc` test.
 
 ## Bring-up
 
