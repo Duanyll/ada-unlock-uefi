@@ -117,8 +117,11 @@ The app does not reallocate the bus.
 
 ## 5. All cards
 
-Set `targets = all` or omit it. Cold boot. Verify every card's BAR1 and driver
-binding:
+Set `targets = all` or omit it. Cold boot. This was verified on eight 48 GB
+4090s on dual EPYC: `summary: 8 unlocked, 0 already, 0 failed, 8 present`, all
+eight BAR1 resources 64 GiB, and `nvidia-smi topo -p2p r` all `OK`.
+
+Verify every card's BAR1 and driver binding:
 
 ```sh
 for d in /sys/bus/pci/devices/0000:*; do

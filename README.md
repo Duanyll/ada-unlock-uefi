@@ -189,13 +189,20 @@ tensor-throughput comparison; a loaded driver alone is not proof.
 
 ## Hardware status
 
-Verified on a single 24 GB RTX 4090 on 2026-11-06: the tensor payload unlocked
-the SM rates (all zero = full), the bar1 payload raised the BAR1 capability to
-64 GiB, and `bar1_rebar64=true` + `pci=realloc` produced a usable 64 GiB BAR1
-(`nvidia-smi` BAR1 Total 65536 MiB) with the driver healthy. The
-`bar1_rebar64=false` path was also verified with the original 256 MB size
-restored. See [docs/HARDWARE-24G.md](docs/HARDWARE-24G.md). Eight-card 64 GiB
-allocation is still a topology/`pci=realloc` test.
+Verified on 2026-11-06 on a single 24 GB RTX 4090 and on eight 48 GB RTX 4090s:
+
+- single 24 GB card: tensor unlock (SM rates all zero = full), bar1 capability
+  raised to 64 GiB, and `bar1_rebar64=true` + `pci=realloc` produced a usable
+  64 GiB BAR1 with the driver healthy;
+- eight 48 GB cards on dual EPYC: all eight unlocked in one boot, all eight BAR1
+  resources 64 GiB, `nvidia-smi` BAR1 Total 65536 MiB each, and
+  `nvidia-smi topo -p2p r` reports `OK` for every pair. The modified driver uses
+  the standard BAR1 P2P path because BAR1 (64 GiB) is larger than VRAM (48 GiB);
+  no "method 3" lines appear.
+
+See [docs/HARDWARE-24G.md](docs/HARDWARE-24G.md) and
+[docs/HARDWARE-27-8X.md](docs/HARDWARE-27-8X.md). No workload was run; the
+eight-card result is a driver/property check.
 
 ## Bring-up
 
