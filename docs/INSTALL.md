@@ -11,7 +11,11 @@ disk/partition holds the ESP. The app is unsigned; Secure Boot must be off.
 - Resizable BAR: on (or Auto)
 - Serial console redirection / SOL: on, 115200 8N1 unless your BMC says otherwise
 - Keep a normal Debian boot entry in the boot menu
-- Do not use a 4090 as the UEFI console; use the BMC/SOL or onboard video. The app logs through ConOut, and a GPU console driver would touch the card during the transaction
+- GPU Option ROM (OpROM): off, and primary display: onboard/BMC video. Some
+  server boards run the GPU OpROM during POST; that initializes the GPU before
+  the app, so `WPR2` is already up and the app cannot claim a cold card.
+- Do not use a GPU as the UEFI console; the app logs through ConOut, and a GPU
+  console driver would touch the card during the transaction
 
 The app runs before Linux. It does not need a GPU console or a display attached.
 
@@ -47,6 +51,11 @@ bar1_rebar64 = false
 chainload = \EFI\debian\grubx64.efi
 log = \ada-unlock.log
 ```
+
+For L40, use `payload = tensor` only; its BAR1 is already 64 GiB at
+power-on and the bar1 payload is not applicable. Also install the post-driver
+helper from `l40-fix/` and enable its service; it re-applies the selectors if a
+reset leaves them partial and never writes fuse/OTP registers.
 
 After the tensor path is verified, switch to `payload = tensor-bar1` with
 `bar1_rebar64 = false` first. That opens the 64 GiB capability but restores
@@ -92,7 +101,8 @@ Power the machine off completely (AC off, wait a few seconds), then on. A warm
 reboot may leave `WPR2` enabled, in which case the app logs
 `claim: WPR2 is enabled` and skips the card.
 
-Watch SOL for:
+Watch SOL or the attached video. Some firmware does not redirect UEFI ConOut
+to SOL; the full log is in `\ada-unlock.log`. A successful card ends with:
 
 ```
 ada-unlock 0.1.0

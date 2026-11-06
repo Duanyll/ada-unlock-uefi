@@ -1,13 +1,13 @@
 # Hardware result: four L40s, tensor issue-rate unlock
 
-Tested 2026-11-06/07 on `villa-Super-Server-35` (BMC `192.168.5.235`):
+Tested 2026-11-06/07 on a four-GPU lab host:
 
 - 4 x `10de:26b5` NVIDIA L40, AD102GL, 48 GB, stock 64 GiB BAR1
 - Debian 13, kernel `6.12.85+deb13-amd64`
 - NVIDIA driver `590.48.01` (unmodified, open kernel modules)
 - 300 W board power limit; 2490 MHz max SM clock
-- Secure Boot disabled; the Slurm node is `IDLE+DRAIN` with reason
-  `upgrade l40 to l40s`
+- Secure Boot disabled
+- GPU Option ROM disabled; primary display is onboard/BMC video
 - GPU addresses: `03, 44, 8a, c3` (all function 0)
 - VBIOS: `95.02.39.00.01` on `03/44/8a`, `95.02.5D.00.01` on `c3`
 - No `pci=realloc`; firmware assigned 64 GiB BAR1 to every card
@@ -139,22 +139,7 @@ The issue-rate doubles on the FP32-accumulate paths, but the 300 W limit keeps
 the delivered TFLOPS at 1.46-1.77x. The FP16-accumulate, INT8 and FFMA paths
 stay at the L40's fused rate.
 
-A four-card benchmark was not rerun in this pass: the host's existing `tclab`
+A four-card benchmark was not rerun in this pass: the lab host's existing `tclab`
 binary needs `libcublasLt.so.13`, which is not installed on the host. The app
 and module logs above are the four-card register-level proof; the owner's
 container/tool can rerun the table.
-
-## Deployment state
-
-- `Boot0000` is `Ada Unlock L40`; `BootOrder` still has Debian as the default.
-  The validation used a one-shot `BootNext: 0000`. To run the app again:
-  `efibootmgr -n 0000`.
-- `/boot/efi/ada-unlock.ini` is `payload=tensor`, `bar1_rebar64=false`,
-  `targets=all`.
-- `l40-fix.service` is enabled; the module is installed in
-  `/lib/modules/$(uname -r)/extra/l40_fix.ko`. The service loads it after
-  `nvidia-smi -L` succeeds and a 3 s settle.
-- The node remains drained; no workload was run.
-- Backup: `/root/ada-unlock-backup-35-20261106-233152`.
-- Logs on the host: `/root/ada-unlock-4card-final.log`,
-  `/root/l40-fix-4card-final.log`, `/root/l40-4card-final-xid.log`.

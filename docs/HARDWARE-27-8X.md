@@ -1,12 +1,12 @@
 # Hardware result: eight 48 GB RTX 4090s
 
-Tested 2026-11-06 on `villa-Super-Server-27`:
+Tested 2026-11-06 on a dual-EPYC host:
 
 - Dual EPYC, eight `10de:2684` RTX 4090 48 GB, direct CPU PCIe root ports
 - Debian 13, kernel `6.12.107+deb13-amd64`
 - Modified NVIDIA open kernel module `615.71.09` (P2P build)
 - GPU Option ROM disabled in the BIOS
-- Secure Boot disabled, BMC SOL on `ttyS1`/115200
+- Secure Boot disabled
 - App build `d91e4e0a36849cea9610b5cd5e910048e85e7d038c0cf684726943d1ae8c7509`
 
 GPU addresses: `01, 25, 41, 61, 81, a1, c1, e1` (all function 0).
@@ -21,7 +21,7 @@ log = \ada-unlock.log
 ```
 
 `targets` omitted (all applicable GPUs). Kernel command line includes
-`pci=realloc` and `console=ttyS1,115200n8`.
+`pci=realloc`.
 
 ## App result
 
@@ -92,14 +92,3 @@ the standard BAR1 P2P path. `dmesg` contains no "method 3" lines, which is
 consistent with the modified driver only using method 3 when BAR1 is smaller
 than VRAM. All eight cards use the same method, so the driver advertises P2P
 between them. No workload was run; this is a driver/property check only.
-
-## Deployment state
-
-- `BootOrder: 0002,0000,0008,0010,0001,0003,0004,0005,0006`
-- `Boot0002` Ada Unlock, `Boot0000` stock Debian
-- `/boot/efi/ada-unlock.ini` is the all-GPU `tensor-bar1`,
-  `bar1_rebar64=true` config
-- `pci=realloc` and `console=ttyS1,115200n8` are in GRUB; SOL shows the kernel
-  log
-- `/boot/efi/ada-unlock.log` is the full eight-card run
-- Backup: `/root/ada-unlock-backup/20261106-222436`

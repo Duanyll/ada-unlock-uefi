@@ -44,12 +44,24 @@ longest hardware evidence upstream. The L40 result is in
 tensor paths, but L40 has three extra OTP speed-select fuses that keep
 FP16-accumulate, FP8->FP16 and INT8 at half rate. That is not a full L40S and
 must not be attempted by writing `FUSE_*`/OTP registers. The app targets
-headless servers: it does not use or restore a GPU console/GOP. Keep the GPUs
-off the UEFI console; use the BMC/SOL or onboard video.
+headless servers: it does not use or restore a GPU console/GOP.
+
+For L40, also install the post-driver helper in
+[l40-fix/](l40-fix/README.md). It re-applies the selectors if a later reset
+leaves them partial, and it never writes `FUSE_*`/OTP registers.
 
 First unlock after a power-on is the supported case. A warm reboot can leave
 `WPR2` enabled; the app then logs `claim: WPR2 is enabled` and skips the card.
 Power-cycle the machine for a clean retry.
+
+## Firmware
+
+- **Disable the GPU Option ROM (OpROM)** and select **onboard/BMC video** as
+  the primary display. Some server boards run the GPU OpROM during POST; it
+  initializes the GPU before the app, so `WPR2` is already up, the card is no
+  longer cold, and the app logs `claim: WPR2 is enabled` and skips it.
+- Do not use a GPU as the UEFI console. The app logs through ConOut; a GPU
+  console driver would touch the card during the transaction.
 
 ## Build
 
@@ -139,8 +151,9 @@ log = \ada-unlock.log
   the usable bar1 state on a 24 GB card and the safe default while testing.
 - `targets`: omit or `all` for every applicable GPU; otherwise a comma-separated
   list of full PCI addresses.
-- `log`: file on the ESP. Every line also goes to UEFI ConOut, which is what
-  the BMC's SOL sees.
+- `log`: file on the ESP. Every line also goes to UEFI ConOut. Whether ConOut
+  reaches the BMC SOL depends on the firmware's console redirection; if it
+  does not, read `\ada-unlock.log` from the ESP.
 
 Unknown keys and invalid values are fatal: the app logs the line and returns to
 the firmware instead of guessing.
@@ -172,7 +185,8 @@ Linux keeps the original BAR1 assignment and the NVIDIA driver loads; the
 
 ## Verify
 
-On the SOL console and in `\ada-unlock.log`, a successful card ends with:
+In `\ada-unlock.log` (and on SOL/video only if the firmware redirects UEFI
+ConOut), a successful card ends with:
 
 ```
 TX: card complete

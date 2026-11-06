@@ -1,8 +1,11 @@
 # Bring-up on the test server
 
-The code is built and QEMU-tested, but the unlock and BAR1 paths have not run
-on this repository's hardware yet. Use this order. Each step isolates one
-variable.
+The code is built and QEMU-tested; the hardware results are in
+`docs/HARDWARE-24G.md`, `docs/HARDWARE-27-8X.md` and `docs/HARDWARE-L40.md`.
+Use this order. Each step isolates one variable.
+
+For L40, skip steps 3 and 4; L40 already has a 64 GiB BAR1 at power-on, so the
+bar1 construct and ReBAR selection do not apply. Steps 1, 2 and 5 apply.
 
 ## 0. QEMU smoke test (optional)
 
@@ -19,7 +22,12 @@ targets = 0000:01:00.0
 chainload = \EFI\debian\grubx64.efi
 ```
 
-Cold power-on. Expected on SOL:
+BIOS: GPU Option ROM off, primary display onboard/BMC video. If the board
+runs the GPU OpROM during POST, the app sees `WPR2` already enabled and cannot
+claim a cold card; fix the firmware setting before retrying.
+
+Cold power-on. Expected in `\ada-unlock.log` (and on SOL/video only if UEFI
+ConOut is redirected):
 
 ```
 TX: begin

@@ -1,11 +1,11 @@
 # Hardware result: single 24 GB RTX 4090
 
-Tested 2026-11-06 on the lab machine `villa-Super-Server-24`:
+Tested 2026-11-06 on a single-GPU lab host:
 
 - Supermicro H12SSL, single `10de:2684` RTX 4090, 24564 MiB
 - Debian 13 (trixie), kernel `6.12.94+deb13-amd64`
 - NVIDIA open kernel module `590.48.01`
-- Secure Boot disabled, BMC SOL on `ttyS1`/115200
+- Secure Boot disabled
 - App build `d91e4e0a36849cea9610b5cd5e910048e85e7d038c0cf684726943d1ae8c7509`
 
 The old `gpu-unlock` DKMS module, firmware package, initramfs copy and
@@ -136,16 +136,3 @@ nvidia 0000:01:00.0: probe with driver nvidia failed with error -1
 The machine was recovered by a cold power cycle into the stock `debian` entry.
 The app now snapshots the BAR1 control before the payload and restores it after
 the FLR when `bar1_rebar64=false`; that is the version verified above.
-
-## Deployment state left on the machine
-
-- `Boot0000` Ada Unlock points at `\EFI\ada-unlock\ada-unlock.efi`.
-- `Boot000C` stock `debian` (shimx64) remains in the boot menu.
-- `BootOrder: 0000,000C,0004` (Ada Unlock first, stock second).
-- `/boot/efi/ada-unlock.ini` is the `tensor-bar1`, `bar1_rebar64=true` config.
-- `pci=realloc` is on the Debian kernel command line.
-- `/boot/efi/ada-unlock.log` is the latest run.
-- The current boot has a 64 GiB BAR1 resource and `nvidia-smi` BAR1 Total 65536 MiB.
-- The old `gpu-unlock` packages are purged; kernel cmdline and initramfs are
-  clean. `/root/ada-unlock-backup/20261106-212409` holds the pre-change config,
-  initrd, package list and PCI/NVIDIA dumps.
