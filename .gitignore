@@ -1,0 +1,5 @@
+target/
+dist/
+assets/
+build/
+.DS_Store

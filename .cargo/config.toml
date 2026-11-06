@@ -1,0 +1,3 @@
+[alias]
+efi = "build --release -p ada-unlock --target x86_64-unknown-uefi"
+efi-debug = "build -p ada-unlock --target x86_64-unknown-uefi"

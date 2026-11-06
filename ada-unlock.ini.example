@@ -1,0 +1,19 @@
+# ada-unlock.ini -- read from the ESP root at boot.
+
+# tensor      = compute unlock only
+# tensor-bar1 = compute unlock + 64 GiB BAR1 construct
+payload = tensor-bar1
+
+# After the FLR, select the 64 GiB ReBAR size for BAR1. The app deliberately
+# does not move the BAR or reassign the bus; Linux must boot with pci=realloc.
+bar1_rebar64 = true
+
+# The Debian bootloader to start after the unlock.
+chainload = \EFI\debian\grubx64.efi
+
+# Optional: comma-separated PCI addresses. Omit or set to "all" for every
+# applicable GPU.
+# targets = 0000:01:00.0,0000:02:00.0
+
+# Optional log file on the ESP. ConOut/SOL gets every line either way.
+log = \ada-unlock.log
