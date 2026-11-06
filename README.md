@@ -1,8 +1,8 @@
 # ada-unlock
 
-A UEFI boot entry for headless Debian servers with multiple RTX 4090s. It runs
-before Linux, unlocks every applicable GPU, optionally selects the 64 GiB BAR1
-size, and then chainloads the normal Debian bootloader.
+A UEFI boot entry for headless Debian servers with multiple RTX 4090s or L40s.
+It runs before Linux, unlocks every applicable GPU, optionally selects the
+64 GiB BAR1 size, and then chainloads the normal Debian bootloader.
 
 This is a focused refactor of the RTX 4090 transaction in
 [gpu-unlock-ada](https://github.com/JustAResearcher/gpu-unlock-ada) and its UEFI
@@ -12,7 +12,7 @@ config.
 
 ## What it does
 
-For every NVIDIA display function with device ID `10de:2684`:
+For every applicable NVIDIA display function:
 
 1. Open the GPU's `EFI_PCI_IO_PROTOCOL`, force D0, enable MEMORY/BUS_MASTER.
 2. Verify the card is cold (`WPR2` down) and not already unlocked.
@@ -20,9 +20,10 @@ For every NVIDIA display function with device ID `10de:2684`:
 4. Fire the Booter with the selected V67 payload.
 5. Verify the payload marker and permissions, write `SS0=0x88888888` / `SS1=0x8`.
 6. Restore the stock signature and perform one PCIe FLR.
-7. Verify the selectors survived the FLR. For the bar1 payload, verify the
-   `CYA/CFG/XVE` construct survived, then select the 64 GiB ReBAR size if
-   configured.
+7. Verify the selectors survived the FLR. L40 re-fuses part of them on FLR,
+   so the app rewrites `SS0`/`SS1` after the FLR and requires
+   `FEAT_READOUT=0`. For the bar1 payload, verify the `CYA/CFG/XVE` construct
+   survived, then select the 64 GiB ReBAR size if configured.
 8. Move to the next GPU. Finally, `LoadImage`/`StartImage` the configured
    Debian bootloader from the same ESP.
 
@@ -35,11 +36,16 @@ line. Linux with `pci=realloc` owns bus resource assignment.
 |---|---|---|
 | `10de:2684` RTX 4090 | tensor or tensor-bar1 | 64 GiB on the bar1 payload |
 | `10de:2685` RTX 4090 D | tensor only | not applicable |
+| `10de:26b5` L40 | tensor only | already 64 GiB stock |
 
-Other NVIDIA display devices are enumerated and skipped. The 4090 path is the
-one with hardware evidence upstream. The app targets headless servers: it does
-not use or restore a GPU console/GOP. Keep the 4090s off the UEFI console; use
-the BMC/SOL or onboard video.
+Other NVIDIA display devices are enumerated and skipped. The 4090 path has the
+longest hardware evidence upstream. The L40 result is in
+[docs/HARDWARE-L40.md](docs/HARDWARE-L40.md): it unlocks the FP32-accumulate
+tensor paths, but L40 has three extra OTP speed-select fuses that keep
+FP16-accumulate, FP8->FP16 and INT8 at half rate. That is not a full L40S and
+must not be attempted by writing `FUSE_*`/OTP registers. The app targets
+headless servers: it does not use or restore a GPU console/GOP. Keep the GPUs
+off the UEFI console; use the BMC/SOL or onboard video.
 
 First unlock after a power-on is the supported case. A warm reboot can leave
 `WPR2` enabled; the app then logs `claim: WPR2 is enabled` and skips the card.

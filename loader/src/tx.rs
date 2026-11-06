@@ -189,7 +189,15 @@ pub fn claim_guards(gpu: &TxGpu) -> Result<(), TxError> {
         info!("claim: WPR2 is enabled (hi={wpr_hi:#x}) - a driver has initialized this card since power-on; power off first");
         return Err(TxError::Busy);
     }
-    info!("claim: cold card, FEAT_PLM={plm:#010x}, WPR2_HI={wpr_hi:#x}");
+    let wpr_lo = gpu.read32_raw(regs::WPR2_LO);
+    let gfw_boot = gpu.read32_raw(regs::GFW_BOOT);
+    let gfw_cpuctl = gpu.read32_raw(regs::GFW_CPUCTL);
+    let ss0 = gpu.read32_raw(regs::FEAT_SS0);
+    let ss1 = gpu.read32_raw(regs::FEAT_SS1);
+    let readout = gpu.read32_raw(regs::FEAT_READOUT);
+    info!(
+        "claim: cold card, FEAT_PLM={plm:#010x}, WPR2={wpr_lo:#x}/{wpr_hi:#x}, GFW_BOOT={gfw_boot:#x}, GFW_CPUCTL={gfw_cpuctl:#x}, SS0={ss0:#010x}, SS1={ss1:#x}, READOUT={readout:#010x}"
+    );
     Ok(())
 }
 

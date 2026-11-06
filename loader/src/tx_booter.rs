@@ -404,10 +404,28 @@ pub fn flr_phase(
         return Err(TxError::Io);
     }
 
-    let ss0 = gpu.read32(regs::FEAT_SS0)?;
-    let ss1 = gpu.read32(regs::FEAT_SS1)?;
-    info!("post-FLR: SS0={ss0:#010x} SS1={ss1:#x}");
+    let plm = gpu.read32_raw(regs::FEAT_PLM);
+    let mut ss0 = gpu.read32(regs::FEAT_SS0)?;
+    let mut ss1 = gpu.read32(regs::FEAT_SS1)?;
+    info!("post-FLR: FEAT_PLM={plm:#010x} SS0={ss0:#010x} SS1={ss1:#x}");
+    if plm == !0 {
+        // On L40 the FLR re-fuses some selector fields to half rate even
+        // though FEAT_PLM stays open. Rewrite them while the gate is open.
+        // On cards where the selectors already survived this is a no-op.
+        write_selector(gpu, "post-FLR SS0", regs::FEAT_SS0, SS0_UNLOCK)?;
+        write_selector(gpu, "post-FLR SS1", regs::FEAT_SS1, SS1_UNLOCK)?;
+        ss0 = gpu.read32(regs::FEAT_SS0)?;
+        ss1 = gpu.read32(regs::FEAT_SS1)?;
+    } else {
+        info!("post-FLR: FEAT_PLM is closed; selectors must have persisted through the FLR");
+    }
+    let readout = gpu.read32(regs::FEAT_READOUT)?;
+    info!("post-FLR: SS0={ss0:#010x} SS1={ss1:#x} READOUT={readout:#010x}");
     if ss0 != SS0_UNLOCK || ss1 != SS1_UNLOCK {
+        return Err(TxError::Io);
+    }
+    if readout != 0 {
+        info!("post-FLR: effective speed-select readout is not full rate");
         return Err(TxError::Io);
     }
 

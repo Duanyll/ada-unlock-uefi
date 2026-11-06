@@ -3,3 +3,11 @@ dist/
 assets/
 build/
 .DS_Store
+l40-fix/*.ko
+l40-fix/*.o
+l40-fix/.*.cmd
+l40-fix/Module.symvers
+l40-fix/modules.order
+l40-fix/.tmp_versions/
+l40-fix/*.mod
+l40-fix/*.mod.c

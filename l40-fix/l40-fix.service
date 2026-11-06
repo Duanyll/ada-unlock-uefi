@@ -1,0 +1,14 @@
+[Unit]
+Description=Re-apply L40 SM speed-select override after NVIDIA init
+After=nvidia-persistenced.service nvidia-dcgm.service
+Before=slurmd.service
+Wants=nvidia-persistenced.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do nvidia-smi -L >/dev/null 2>&1 && break; sleep 1; done; sleep 3'
+ExecStart=/sbin/modprobe l40_fix
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

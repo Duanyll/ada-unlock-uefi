@@ -79,6 +79,7 @@ fn gpu_name(device: u16, payload: Payload) -> Option<&'static str> {
     match device {
         0x2684 => Some("RTX 4090"),
         0x2685 if payload == Payload::Tensor => Some("RTX 4090 D"),
+        0x26b5 if payload == Payload::Tensor => Some("L40"),
         _ => None,
     }
 }
