@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+#DEBHELPER#
+
+case "$1" in
+    purge)
+        # The normal remove path cleans this before the package files go away.
+        # This also handles a purge after a failed or incomplete remove.
+        rm -rf /var/lib/ada-unlock
+        ;;
+esac
+
+exit 0

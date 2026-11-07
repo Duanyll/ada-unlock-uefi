@@ -1,0 +1,541 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Apply or remove the ada-unlock UEFI application on the EFI System Partition.
+#
+# This script is run by the package maintainer scripts and can also be run by
+# the operator after editing /etc/default/ada-unlock.
+
+set -eu
+
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+CONF=/etc/default/ada-unlock
+STATE_DIR=/var/lib/ada-unlock
+STATE=$STATE_DIR/state
+BACKUP_DIR=$STATE_DIR/backup
+PKG_ESP=/usr/lib/ada-unlock/esp
+
+APP_REL=EFI/ada-unlock/ada-unlock.efi
+INI_REL=ada-unlock.ini
+LOADER='\EFI\ada-unlock\ada-unlock.efi'
+BOOT_LABEL='Ada Unlock'
+ASSETS='booter_load_ad102.bin gsp_boot_ad102.bin gsp_boot_desc_ad102.bin fwimage_ad102.bin fwsignature_ad102.bin v67-ad102-four-plm.bin v67-ad102-bar1-64g.bin'
+GRUB_FILE=/etc/default/grub.d/90-ada-unlock.cfg
+
+log() { printf 'ada-unlockctl: %s\n' "$*" >&2; }
+warn() { printf 'ada-unlockctl: warning: %s\n' "$*" >&2; }
+die() { log "$*"; exit 1; }
+
+usage() {
+    cat >&2 <<'EOF'
+usage: ada-unlockctl apply|remove|status
+
+  apply   write the current /etc/default/ada-unlock configuration to the ESP,
+          create/update the UEFI boot entry, and update the GRUB command line
+  remove  remove the package-managed ESP files, boot entry, and GRUB drop-in,
+          restoring any ESP files that were overwritten at install time
+  status  show the current configuration and installation state
+EOF
+    exit 2
+}
+
+# ---------------------------------------------------------------- state
+
+reset_state() {
+    ST_STATE_EXISTED=0
+    ST_ESP=
+    ST_ENTRY_NUM=
+    ST_ENTRY_CREATED=0
+    ST_OLD_BOOTORDER=
+    ST_BOOTORDER_CHANGED=0
+    ST_GRUB_SNIPPET=0
+    ST_BACKUP_FILES=
+    ST_INSTALLED_FILES=
+}
+
+load_state() {
+    reset_state
+    if [ -f "$STATE" ]; then
+        # The state file is written by this script, root-owned, 0644.
+        # shellcheck disable=SC1090
+        . "$STATE"
+        ST_STATE_EXISTED=1
+    fi
+}
+
+save_state() {
+    mkdir -p "$STATE_DIR"
+    umask 022
+    {
+        printf 'ST_ESP=%s\n' "${ST_ESP:-}"
+        printf 'ST_ENTRY_NUM=%s\n' "${ST_ENTRY_NUM:-}"
+        printf 'ST_ENTRY_CREATED=%s\n' "${ST_ENTRY_CREATED:-0}"
+        printf 'ST_OLD_BOOTORDER=%s\n' "${ST_OLD_BOOTORDER:-}"
+        printf 'ST_BOOTORDER_CHANGED=%s\n' "${ST_BOOTORDER_CHANGED:-0}"
+        printf 'ST_GRUB_SNIPPET=%s\n' "${ST_GRUB_SNIPPET:-0}"
+        printf "ST_BACKUP_FILES='%s'\n" "${ST_BACKUP_FILES:-}"
+        printf "ST_INSTALLED_FILES='%s'\n" "${ST_INSTALLED_FILES:-}"
+    } > "$STATE.new"
+    mv -f "$STATE.new" "$STATE"
+    chmod 0644 "$STATE"
+}
+
+reset_config() {
+    ADA_UNLOCK_PAYLOAD=tensor
+    ADA_UNLOCK_BAR1_REBAR64=false
+    ADA_UNLOCK_TARGETS=all
+    ADA_UNLOCK_CHAINLOAD=
+    ADA_UNLOCK_ADD_BOOT_ENTRY=true
+    ADA_UNLOCK_SET_BOOTORDER=true
+    ADA_UNLOCK_MANAGE_GRUB=true
+    ADA_UNLOCK_ESP=
+}
+
+normalize_bool() {
+    case "$1" in
+        true|1|yes|on) printf 'true\n' ;;
+        false|0|no|off) printf 'false\n' ;;
+        *) die "invalid boolean '$1' in $CONF" ;;
+    esac
+}
+
+load_config() {
+    reset_config
+    [ -r "$CONF" ] || die "missing $CONF"
+    # shellcheck disable=SC1090
+    . "$CONF"
+    : "${ADA_UNLOCK_PAYLOAD:=tensor}"
+    : "${ADA_UNLOCK_BAR1_REBAR64:=false}"
+    : "${ADA_UNLOCK_TARGETS:=all}"
+    : "${ADA_UNLOCK_CHAINLOAD:=}"
+    : "${ADA_UNLOCK_ADD_BOOT_ENTRY:=true}"
+    : "${ADA_UNLOCK_SET_BOOTORDER:=true}"
+    : "${ADA_UNLOCK_MANAGE_GRUB:=true}"
+    : "${ADA_UNLOCK_ESP:=}"
+
+    ADA_UNLOCK_PAYLOAD=$(printf '%s' "$ADA_UNLOCK_PAYLOAD" | tr '[:upper:]' '[:lower:]')
+    case "$ADA_UNLOCK_PAYLOAD" in
+        tensor|tensor-bar1) ;;
+        *) die "ADA_UNLOCK_PAYLOAD must be tensor or tensor-bar1" ;;
+    esac
+    ADA_UNLOCK_BAR1_REBAR64=$(normalize_bool "$ADA_UNLOCK_BAR1_REBAR64")
+    ADA_UNLOCK_ADD_BOOT_ENTRY=$(normalize_bool "$ADA_UNLOCK_ADD_BOOT_ENTRY")
+    ADA_UNLOCK_SET_BOOTORDER=$(normalize_bool "$ADA_UNLOCK_SET_BOOTORDER")
+    ADA_UNLOCK_MANAGE_GRUB=$(normalize_bool "$ADA_UNLOCK_MANAGE_GRUB")
+
+    [ "$ADA_UNLOCK_PAYLOAD" = tensor ] && [ "$ADA_UNLOCK_BAR1_REBAR64" = true ] && \
+        die "ADA_UNLOCK_BAR1_REBAR64=true requires ADA_UNLOCK_PAYLOAD=tensor-bar1"
+    [ -n "$ADA_UNLOCK_TARGETS" ] || ADA_UNLOCK_TARGETS=all
+}
+
+# ---------------------------------------------------------------- system
+
+find_esp() {
+    required=$1
+    esp=
+    if [ -n "${ADA_UNLOCK_ESP:-}" ]; then
+        if [ -d "$ADA_UNLOCK_ESP" ]; then
+            esp=$ADA_UNLOCK_ESP
+            return 0
+        fi
+        [ "$required" = 1 ] && die "ADA_UNLOCK_ESP=$ADA_UNLOCK_ESP is not a directory"
+        return 1
+    fi
+    for candidate in /boot/efi /efi; do
+        if [ -d "$candidate" ] && mountpoint -q "$candidate" 2>/dev/null; then
+            esp=$candidate
+            return 0
+        fi
+    done
+    [ "$required" = 1 ] && die "no mounted EFI System Partition at /boot/efi or /efi"
+    return 1
+}
+
+need_disk_part() {
+    source=$(findmnt -n -o SOURCE --target "$esp" 2>/dev/null || true)
+    [ -n "$source" ] || die "cannot find the block device for $esp"
+    source=$(readlink -f "$source")
+    parent=$(lsblk -n -o PKNAME "$source" 2>/dev/null | head -n 1 || true)
+    part=$(lsblk -n -o PARTN "$source" 2>/dev/null | head -n 1 || true)
+    [ -n "$parent" ] || die "cannot find the parent disk for $source"
+    [ -n "$part" ] || die "cannot find the partition number for $source"
+    disk=/dev/$parent
+    partition=$part
+}
+
+normalize_efi_path() {
+    # shellcheck disable=SC1003
+    p=$(printf '%s' "$1" | tr '/' '\\')
+    case "$p" in
+        \\*) ;;
+        *) p="\\$p" ;;
+    esac
+    printf '%s\n' "$p"
+}
+
+efi_path_to_rel() {
+    p=${1#\\}
+    # shellcheck disable=SC1003
+    printf '%s' "$p" | tr '\\' '/'
+}
+
+resolve_chainload() {
+    if [ -n "$ADA_UNLOCK_CHAINLOAD" ]; then
+        chainload=$(normalize_efi_path "$ADA_UNLOCK_CHAINLOAD")
+    else
+        chainload=
+        for candidate in \
+            '\EFI\debian\grubx64.efi' \
+            '\EFI\debian\shimx64.efi' \
+            '\EFI\systemd\systemd-bootx64.efi' \
+            '\EFI\BOOT\BOOTX64.EFI'
+        do
+            rel=$(efi_path_to_rel "$candidate")
+            if [ -f "$esp/$rel" ]; then
+                chainload=$candidate
+                break
+            fi
+        done
+    fi
+    [ -n "$chainload" ] || die "no Debian EFI bootloader found on $esp; set ADA_UNLOCK_CHAINLOAD"
+    rel=$(efi_path_to_rel "$chainload")
+    [ -f "$esp/$rel" ] || die "ADA_UNLOCK_CHAINLOAD=$chainload does not exist on $esp"
+}
+
+current_bootorder() {
+    efibootmgr 2>/dev/null | sed -n 's/^BootOrder: //p' | head -n 1
+}
+
+efi_list() {
+    efibootmgr -v 2>/dev/null || true
+}
+
+find_loader_line() {
+    efi_list | grep -F -- "$LOADER" | head -n 1 || true
+}
+
+find_label_line() {
+    label=$1
+    efi_list | awk -v label="$label" '
+        /^Boot[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]/ {
+            line = $0
+            sub(/^Boot[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]\*? /, "", line)
+            split(line, parts, "\t")
+            if (parts[1] == label)
+                print $0
+        }'
+}
+
+entry_number() {
+    printf '%s\n' "$1" | cut -c5-8
+}
+
+backup_file() {
+    rel=$1
+    [ -f "$esp/$rel" ] || return 0
+    case " $ST_BACKUP_FILES " in
+        *" $rel "*) return 0 ;;
+    esac
+    mkdir -p "$BACKUP_DIR/$(dirname "$rel")"
+    cp -p "$esp/$rel" "$BACKUP_DIR/$rel" || die "cannot back up $esp/$rel"
+    ST_BACKUP_FILES="${ST_BACKUP_FILES:+$ST_BACKUP_FILES }$rel"
+}
+
+add_installed() {
+    ST_INSTALLED_FILES="${ST_INSTALLED_FILES:+$ST_INSTALLED_FILES }$1"
+}
+
+install_files() {
+    install -d "$esp/EFI/ada-unlock"
+
+    backup_file "$APP_REL"
+    install -m 0644 "$PKG_ESP/EFI/ada-unlock/ada-unlock.efi" "$esp/$APP_REL"
+    add_installed "$APP_REL"
+
+    for asset in $ASSETS assets.json; do
+        backup_file "$asset"
+        install -m 0644 "$PKG_ESP/$asset" "$esp/$asset"
+        add_installed "$asset"
+    done
+
+    backup_file "$INI_REL"
+    add_installed "$INI_REL"
+}
+
+write_ini() {
+    tmp=$esp/.ada-unlock.ini.$$
+    {
+        printf '# Generated by ada-unlock-uefi from /etc/default/ada-unlock.\n'
+        printf 'payload = %s\n' "$ADA_UNLOCK_PAYLOAD"
+        printf 'bar1_rebar64 = %s\n' "$ADA_UNLOCK_BAR1_REBAR64"
+        printf 'chainload = %s\n' "$chainload"
+        if [ "$ADA_UNLOCK_TARGETS" != all ]; then
+            printf 'targets = %s\n' "$ADA_UNLOCK_TARGETS"
+        fi
+        printf 'log = \\ada-unlock.log\n'
+    } > "$tmp" || die "cannot write $tmp"
+    chmod 0644 "$tmp"
+    mv -f "$tmp" "$esp/$INI_REL" || die "cannot replace $esp/$INI_REL"
+}
+
+restore_bootorder() {
+    if [ -n "${ST_OLD_BOOTORDER:-}" ]; then
+        if ! efibootmgr -o "$ST_OLD_BOOTORDER" >/dev/null 2>&1; then
+            warn "could not restore BootOrder=$ST_OLD_BOOTORDER"
+        fi
+    else
+        current=$(current_bootorder)
+        if [ -n "$current" ] && [ -n "${ST_ENTRY_NUM:-}" ]; then
+            remaining=$(printf '%s' "$current" | tr ',' '\n' | grep -vx "$ST_ENTRY_NUM" || true)
+            remaining=$(printf '%s\n' "$remaining" | paste -sd, -)
+            if [ -n "$remaining" ]; then
+                efibootmgr -o "$remaining" >/dev/null 2>&1 || \
+                    warn "could not remove $ST_ENTRY_NUM from BootOrder"
+            fi
+        fi
+    fi
+    ST_BOOTORDER_CHANGED=0
+}
+
+delete_package_entry() {
+    if [ "${ST_ENTRY_CREATED:-0}" = 1 ] && [ -n "${ST_ENTRY_NUM:-}" ]; then
+        if ! efibootmgr -b "$ST_ENTRY_NUM" -B >/dev/null 2>&1; then
+            warn "could not delete UEFI boot entry $ST_ENTRY_NUM"
+        fi
+        ST_ENTRY_NUM=
+        ST_ENTRY_CREATED=0
+    fi
+    if [ "${ST_BOOTORDER_CHANGED:-0}" = 1 ] || [ -n "${ST_OLD_BOOTORDER:-}" ]; then
+        restore_bootorder
+    fi
+}
+
+apply_boot_entry() {
+    line=$(find_loader_line)
+    if [ -n "$line" ]; then
+        ST_ENTRY_NUM=$(entry_number "$line")
+        # If the state already says this entry was created by us, keep that
+        # ownership. Otherwise it pre-existed and must survive removal.
+        if [ "${ST_ENTRY_CREATED:-0}" != 1 ]; then
+            ST_ENTRY_CREATED=0
+        fi
+    else
+        label=$BOOT_LABEL
+        if [ -n "$(find_label_line "$label")" ]; then
+            label="$BOOT_LABEL (apt)"
+            if [ -n "$(find_label_line "$label")" ]; then
+                die "both UEFI labels '$BOOT_LABEL' and '$label' are already in use"
+            fi
+        fi
+        need_disk_part
+        output=$(efibootmgr -c -d "$disk" -p "$partition" -L "$label" -l "$LOADER" 2>&1) || {
+            printf '%s\n' "$output" >&2
+            die "efibootmgr could not create the boot entry"
+        }
+        line=$(find_loader_line)
+        [ -n "$line" ] || die "efibootmgr did not create a matching boot entry"
+        ST_ENTRY_NUM=$(entry_number "$line")
+        ST_ENTRY_CREATED=1
+        log "created UEFI boot entry $ST_ENTRY_NUM ($label)"
+    fi
+
+    if [ "$ADA_UNLOCK_SET_BOOTORDER" = true ]; then
+        current=$(current_bootorder)
+        remaining=$(printf '%s' "$current" | tr ',' '\n' | grep -vx "$ST_ENTRY_NUM" || true)
+        remaining=$(printf '%s\n' "$remaining" | paste -sd, -)
+        if [ -n "$remaining" ]; then
+            new="$ST_ENTRY_NUM,$remaining"
+        else
+            new=$ST_ENTRY_NUM
+        fi
+        if [ "$new" != "$current" ]; then
+            if ! efibootmgr -o "$new" >/dev/null 2>&1; then
+                die "efibootmgr could not set BootOrder=$new"
+            fi
+            ST_BOOTORDER_CHANGED=1
+            log "BootOrder: $new"
+        fi
+    elif [ "${ST_BOOTORDER_CHANGED:-0}" = 1 ]; then
+        restore_bootorder
+    fi
+}
+
+update_grub() {
+    required=$1
+    if command -v update-grub >/dev/null 2>&1; then
+        if ! output=$(update-grub 2>&1); then
+            printf '%s\n' "$output" >&2
+            [ "$required" = 1 ] && die "update-grub failed"
+            warn "update-grub failed"
+            return 1
+        fi
+        return 0
+    fi
+    [ "$required" = 1 ] && die "update-grub not found"
+    warn "update-grub not found; GRUB was not regenerated"
+    return 1
+}
+
+apply_grub() {
+    want=0
+    if [ "$ADA_UNLOCK_MANAGE_GRUB" = true ] && \
+       [ "$ADA_UNLOCK_PAYLOAD" = tensor-bar1 ] && \
+       [ "$ADA_UNLOCK_BAR1_REBAR64" = true ]; then
+        want=1
+    fi
+
+    had=0
+    [ -f "$GRUB_FILE" ] && had=1
+
+    if [ "$want" = 1 ]; then
+        install -d "$(dirname "$GRUB_FILE")"
+        tmp=$GRUB_FILE.new.$$
+        cat > "$tmp" <<'EOF'
+# Generated by ada-unlock-uefi. Do not edit; use /etc/default/ada-unlock.
+# The 64 GiB BAR1 selection needs Linux to reassign the BAR/bridge windows.
+case " $GRUB_CMDLINE_LINUX $GRUB_CMDLINE_LINUX_DEFAULT " in
+  *" pci=realloc "*) ;;
+  *) GRUB_CMDLINE_LINUX_DEFAULT="${GRUB_CMDLINE_LINUX_DEFAULT:+$GRUB_CMDLINE_LINUX_DEFAULT }pci=realloc" ;;
+esac
+EOF
+        chmod 0644 "$tmp"
+        mv -f "$tmp" "$GRUB_FILE"
+        ST_GRUB_SNIPPET=1
+    else
+        rm -f "$GRUB_FILE"
+        ST_GRUB_SNIPPET=0
+    fi
+
+    if [ "$want" = 1 ] || [ "$had" = 1 ] || [ "${ST_GRUB_SNIPPET:-0}" = 1 ]; then
+        update_grub 1
+    fi
+}
+
+remove_grub() {
+    had=0
+    [ -f "$GRUB_FILE" ] && had=1
+    rm -f "$GRUB_FILE"
+    if [ "$had" = 1 ] || [ "${ST_GRUB_SNIPPET:-0}" = 1 ]; then
+        update_grub 0 || true
+    fi
+    ST_GRUB_SNIPPET=0
+}
+
+restore_files() {
+    # Restore files that existed before the package first wrote to the ESP.
+    for rel in $ST_INSTALLED_FILES; do
+        if [ -f "$BACKUP_DIR/$rel" ]; then
+            install -D -m 0644 "$BACKUP_DIR/$rel" "$esp/$rel" || \
+                die "cannot restore $esp/$rel"
+        else
+            rm -f "$esp/$rel"
+        fi
+    done
+    # A file could have been backed up but no longer be in the current
+    # installed list after an upgrade.
+    for rel in $ST_BACKUP_FILES; do
+        case " $ST_INSTALLED_FILES " in
+            *" $rel "*) ;;
+            *) [ -f "$BACKUP_DIR/$rel" ] && install -D -m 0644 "$BACKUP_DIR/$rel" "$esp/$rel" || true ;;
+        esac
+    done
+    rmdir "$esp/EFI/ada-unlock" 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------- actions
+
+do_apply() {
+    load_config
+    find_esp 1
+    load_state
+
+    if [ -n "${ST_ESP:-}" ] && [ "$ST_ESP" != "$esp" ]; then
+        die "previous state is for ESP $ST_ESP, but the current ESP is $esp"
+    fi
+    ST_ESP=$esp
+
+    resolve_chainload
+    log "ESP $esp, payload $ADA_UNLOCK_PAYLOAD, chainload $chainload"
+
+    mkdir -p "$STATE_DIR" "$BACKUP_DIR"
+    if [ "$ST_STATE_EXISTED" != 1 ]; then
+        ST_OLD_BOOTORDER=$(current_bootorder)
+    fi
+    ST_INSTALLED_FILES=
+    install_files
+    write_ini
+    save_state
+
+    if [ "$ADA_UNLOCK_ADD_BOOT_ENTRY" = true ]; then
+        apply_boot_entry
+    else
+        delete_package_entry
+    fi
+    save_state
+
+    apply_grub
+    save_state
+
+    log "installed $ST_INSTALLED_FILES"
+    log "done; the unlock runs on the next cold boot"
+}
+
+do_remove() {
+    load_state
+
+    remove_grub
+
+    if [ -z "${ST_ESP:-}" ]; then
+        find_esp 0 || true
+        if [ -n "${esp:-}" ]; then
+            ST_ESP=$esp
+        fi
+    fi
+
+    if [ -n "${ST_ESP:-}" ] && [ -d "$ST_ESP" ]; then
+        esp=$ST_ESP
+        delete_package_entry
+        restore_files
+        rm -rf "$STATE_DIR"
+        log "removed package-managed UEFI files and boot entry"
+    else
+        warn "ESP not mounted; package-managed ESP files were left in place"
+        [ -n "${ST_ESP:-}" ] && warn "state kept in $STATE for a later remove"
+    fi
+}
+
+do_status() {
+    reset_config
+    if [ -r "$CONF" ]; then
+        # shellcheck disable=SC1090
+        . "$CONF"
+    fi
+    printf 'config: %s\n' "$CONF"
+    printf 'payload: %s\n' "${ADA_UNLOCK_PAYLOAD:-}"
+    printf 'bar1_rebar64: %s\n' "${ADA_UNLOCK_BAR1_REBAR64:-}"
+    printf 'targets: %s\n' "${ADA_UNLOCK_TARGETS:-all}"
+    if find_esp 0; then
+        printf 'esp: %s\n' "$esp"
+        [ -f "$esp/$INI_REL" ] && printf 'ini: %s\n' "$esp/$INI_REL"
+    else
+        printf 'esp: not mounted\n'
+    fi
+    printf 'grub drop-in: %s\n' "$([ -f "$GRUB_FILE" ] && echo present || echo absent)"
+    printf 'uefi entry: '
+    line=$(find_loader_line)
+    if [ -n "$line" ]; then printf '%s\n' "$line"; else echo absent; fi
+    printf 'bootorder: %s\n' "$(current_bootorder)"
+    if [ -f "$STATE" ]; then
+        printf 'state: %s\n' "$STATE"
+    else
+        printf 'state: absent\n'
+    fi
+}
+
+case "${1:-}" in
+    apply) do_apply ;;
+    remove) do_remove ;;
+    status) do_status ;;
+    *) usage ;;
+esac

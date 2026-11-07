@@ -1,0 +1,54 @@
+.TH ADA-UNLOCKCTL 8 "2026-11-07" "ada-unlock-uefi 0.1.0" "System Administration"
+.SH NAME
+ada-unlockctl \- apply or remove the ada-unlock UEFI boot application
+.SH SYNOPSIS
+.B ada-unlockctl
+.RI { apply | remove | status }
+.SH DESCRIPTION
+.B ada-unlockctl
+copies the ada-unlock UEFI application and its firmware assets from
+.I /usr/lib/ada-unlock/esp
+to the mounted EFI System Partition, generates
+.I ada-unlock.ini
+from
+.IR /etc/default/ada-unlock ,
+and manages the UEFI boot entry and GRUB kernel command line.
+.PP
+The UEFI application performs the GPU transaction on the next cold boot, then
+chainloads the normal Debian bootloader. It is not run by this command.
+.SH COMMANDS
+.TP
+.B apply
+Install or refresh the ESP files and the UEFI boot entry, and add or remove the
+generated GRUB drop-in according to the current configuration.
+.TP
+.B remove
+Remove the package-managed ESP files, UEFI boot entry, and GRUB drop-in.
+Restore the pre-install \fBBootOrder\fP and any ESP files that were overwritten
+at install time. This is normally called by the package's
+.B prerm
+script.
+.TP
+.B status
+Print the current configuration, ESP paths, UEFI entry, boot order, and state
+file location without changing anything.
+.SH FILES
+.TP
+.I /etc/default/ada-unlock
+Operator configuration. Edit this file and run
+.B ada-unlockctl apply
+to regenerate the ESP configuration.
+.TP
+.I /etc/default/grub.d/90-ada-unlock.cfg
+Generated GRUB drop-in that appends
+.B pci=realloc
+when the 64 GiB BAR1 path is selected.
+.TP
+.I /var/lib/ada-unlock/state
+Package-managed state and the pre-install ESP file backups.
+.TP
+.I /boot/efi/ada-unlock.ini
+Configuration read by the UEFI application on the ESP.
+.SH SEE ALSO
+.IR /usr/share/doc/ada-unlock-uefi/README.Debian ,
+.IR /usr/share/doc/ada-unlock-uefi/INSTALL.md .

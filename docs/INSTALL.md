@@ -3,6 +3,10 @@
 This assumes you have console access through the BMC (SOL) and you know which
 disk/partition holds the ESP. The app is unsigned; Secure Boot must be off.
 
+For internal deployment, the Debian package in [PACKAGING.md](PACKAGING.md)
+automates the ESP copy, UEFI boot entry, and GRUB command line. The manual
+steps below are the equivalent and remain useful for recovery.
+
 ## 1. Firmware settings
 
 - Boot mode: UEFI (CSM off)
@@ -93,7 +97,8 @@ sudo update-grub
 ```
 
 The app does not edit GRUB or pass kernel options. The chainloaded bootloader
-must already carry `pci=realloc`.
+must already carry `pci=realloc`. The Debian package automates this through its
+GRUB drop-in; the manual install below does not.
 
 ## 6. First boot
 

@@ -1,0 +1,19 @@
+#!/bin/sh
+set -e
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+#DEBHELPER#
+
+case "$1" in
+    configure)
+        if command -v ada-unlockctl >/dev/null 2>&1; then
+            ada-unlockctl apply
+        fi
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+esac
+
+exit 0

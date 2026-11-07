@@ -11,3 +11,17 @@ l40-fix/modules.order
 l40-fix/.tmp_versions/
 l40-fix/*.mod
 l40-fix/*.mod.c
+
+# Debian packaging build output
+debian/.debhelper/
+debian/ada-unlock-uefi/
+debian/debhelper-build-stamp
+debian/files
+debian/*.substvars
+debian/*.debhelper
+*.deb
+*.buildinfo
+*.changes
+
+# Local package output
+out/

@@ -1,0 +1,28 @@
+# Configuration for ada-unlock-uefi. After editing, run:
+#   sudo ada-unlockctl apply
+#
+# This default only performs the compute unlock and does not touch the kernel
+# command line. For an RTX 4090 with the 64 GiB BAR1 construct, use:
+#   ADA_UNLOCK_PAYLOAD="tensor-bar1"
+#   ADA_UNLOCK_BAR1_REBAR64="true"
+
+ADA_UNLOCK_PAYLOAD="tensor"
+ADA_UNLOCK_BAR1_REBAR64="false"
+
+# "all" or a comma-separated list of PCI addresses.
+ADA_UNLOCK_TARGETS="all"
+
+# Empty means autodetect the Debian EFI bootloader on the ESP.
+ADA_UNLOCK_CHAINLOAD=""
+
+# Create the UEFI boot entry and put it first in BootOrder. Both are restored
+# on package removal. Set SET_BOOTORDER=false to leave the boot order alone.
+ADA_UNLOCK_ADD_BOOT_ENTRY="true"
+ADA_UNLOCK_SET_BOOTORDER="true"
+
+# Append pci=realloc to GRUB when PAYLOAD=tensor-bar1 and BAR1_REBAR64=true.
+ADA_UNLOCK_MANAGE_GRUB="true"
+
+# Empty means autodetect /boot/efi or /efi. Set this only for a non-standard
+# ESP mountpoint; the path must not contain spaces.
+ADA_UNLOCK_ESP=""

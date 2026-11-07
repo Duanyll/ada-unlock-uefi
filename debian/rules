@@ -1,0 +1,43 @@
+#!/usr/bin/make -f
+
+# The UEFI binary and the NVIDIA firmware assets are intentionally not in git.
+# Build them first on a build host with `make dist`; this packaging tree only
+# stages a verified dist/ into the binary package.
+
+DESTDIR := $(CURDIR)/debian/ada-unlock-uefi
+ESP_ASSETS := booter_load_ad102.bin gsp_boot_ad102.bin gsp_boot_desc_ad102.bin \
+              fwimage_ad102.bin fwsignature_ad102.bin \
+              v67-ad102-four-plm.bin v67-ad102-bar1-64g.bin
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+
+override_dh_auto_build:
+	@test -f dist/EFI/ada-unlock/ada-unlock.efi || \
+		{ echo "dist/EFI/ada-unlock/ada-unlock.efi missing; run 'make dist' first" >&2; exit 1; }
+	@for f in $(ESP_ASSETS) assets.json; do \
+		test -f "dist/$$f" || { echo "dist/$$f missing; run 'make dist' first" >&2; exit 1; }; \
+	done
+
+override_dh_auto_test:
+	python3 tools/check_efi.py dist/EFI/ada-unlock/ada-unlock.efi
+	python3 tools/check_assets.py dist
+
+override_dh_auto_clean:
+
+# Keep the PE32+ image exactly as built.
+override_dh_strip:
+
+override_dh_auto_install:
+	install -d $(DESTDIR)/usr/lib/ada-unlock/esp/EFI/ada-unlock
+	install -m 0644 dist/EFI/ada-unlock/ada-unlock.efi \
+		$(DESTDIR)/usr/lib/ada-unlock/esp/EFI/ada-unlock/ada-unlock.efi
+	for f in $(ESP_ASSETS) assets.json; do \
+		install -m 0644 "dist/$$f" $(DESTDIR)/usr/lib/ada-unlock/esp/; \
+	done
+	install -D -m 0755 debian/ada-unlockctl $(DESTDIR)/usr/sbin/ada-unlockctl
+	install -D -m 0644 debian/ada-unlock.default $(DESTDIR)/etc/default/ada-unlock
+	install -D -m 0644 licenses/NVIDIA-DRIVER-LICENSE.txt \
+		$(DESTDIR)/usr/share/doc/ada-unlock-uefi/NVIDIA-DRIVER-LICENSE.txt

@@ -28,7 +28,9 @@ For every applicable NVIDIA display function:
    Debian bootloader from the same ESP.
 
 The app never changes the BAR address, the bridge windows or the kernel command
-line. Linux with `pci=realloc` owns bus resource assignment.
+line. Linux with `pci=realloc` owns bus resource assignment. When the Debian
+package is used, its `ada-unlockctl apply` step manages that GRUB option; the
+UEFI application itself still does not.
 
 ## Supported
 
@@ -96,6 +98,29 @@ the upstream projects.
 
 ## Install
 
+### Debian package (internal)
+
+The Debian package installs the app, manages the ESP files, creates the UEFI
+boot entry, and adds `pci=realloc` to GRUB when the 64 GiB BAR1 path is
+selected. It is built only for internal deployment because it contains NVIDIA
+firmware; do not upload the `.deb` to a public archive.
+
+```sh
+make dist
+./packaging/build-deb.sh
+sudo apt install ./ada-unlock-uefi_0.1.0_amd64.deb
+sudo editor /etc/default/ada-unlock
+sudo ada-unlockctl apply
+```
+
+The package defaults to `payload = tensor` (valid for both 4090 and L40). For
+an RTX 4090 with 64 GiB BAR1, set `ADA_UNLOCK_PAYLOAD="tensor-bar1"` and
+`ADA_UNLOCK_BAR1_REBAR64="true"`, then run `ada-unlockctl apply`. See
+[docs/PACKAGING.md](docs/PACKAGING.md) for package contents, GRUB/UEFI hooks,
+and uninstall behavior.
+
+### Manual ESP install
+
 Copy the **contents** of `dist/` to the root of the ESP. The result is:
 
 ```
@@ -129,7 +154,9 @@ example `\EFI\debian\grubx64.efi` or `\EFI\systemd\systemd-bootx64.efi`.
 
 ## Config
 
-`\ada-unlock.ini` is flat `key = value`:
+For a manual install, `\ada-unlock.ini` is flat `key = value`. The Debian
+package generates this file from `/etc/default/ada-unlock`; do not edit the ESP
+file directly when using the package.
 
 ```ini
 payload = tensor-bar1

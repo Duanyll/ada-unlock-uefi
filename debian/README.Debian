@@ -1,0 +1,69 @@
+# ada-unlock-uefi Debian package
+
+This package is for internal deployment. It contains locally generated NVIDIA
+firmware and must not be uploaded to a public package archive.
+
+## What apt installs
+
+- `/usr/lib/ada-unlock/esp/` — the UEFI application and its assets. These are
+  copied to the mounted EFI System Partition (usually `/boot/efi`) by
+  `ada-unlockctl apply`.
+- `/etc/default/ada-unlock` — the operator configuration. It is a dpkg
+  conffile, so local edits survive package upgrades.
+- `/usr/sbin/ada-unlockctl` — applies the configuration and removes it again.
+- `/etc/default/grub.d/90-ada-unlock.cfg` — generated only when the 64 GiB BAR1
+  path is selected; it appends `pci=realloc` once to the GRUB kernel command
+  line.
+- One UEFI boot entry, normally labelled `Ada Unlock`, and (by default) the
+  first position in `BootOrder`.
+
+## Configure
+
+Edit `/etc/default/ada-unlock`, then run:
+
+```sh
+sudo ada-unlockctl apply
+```
+
+The main settings are:
+
+```sh
+ADA_UNLOCK_PAYLOAD="tensor"
+ADA_UNLOCK_BAR1_REBAR64="false"
+```
+
+Use `tensor` for the compute unlock on both RTX 4090 and L40. For an RTX 4090
+with the 64 GiB BAR1 construct, use:
+
+```sh
+ADA_UNLOCK_PAYLOAD="tensor-bar1"
+ADA_UNLOCK_BAR1_REBAR64="true"
+```
+
+Then `ada-unlockctl apply` adds `pci=realloc` to GRUB and regenerates
+`/boot/efi/ada-unlock.ini`. It does not run the app; the unlock happens on the
+next cold boot.
+
+`ADA_UNLOCK_SET_BOOTORDER="false"` leaves the UEFI boot order alone.
+`ADA_UNLOCK_ADD_BOOT_ENTRY="false"` omits the boot entry entirely.
+`ADA_UNLOCK_CHAINLOAD` is autodetected from `/EFI/debian/grubx64.efi` and the
+usual fallbacks; set it explicitly if the Debian bootloader lives elsewhere.
+
+## Remove
+
+```sh
+sudo apt purge ada-unlock-uefi
+```
+
+Before the package files are removed, `ada-unlockctl remove` deletes the UEFI
+boot entry it created, restores the previous `BootOrder`, removes the GRUB
+drop-in, and restores any ESP files that were overwritten during installation.
+A pre-existing boot entry that the package adopted is left in place. The app
+log on the ESP is intentionally left for diagnosis.
+
+## Firmware and Secure Boot
+
+The EFI application is unsigned. Secure Boot must be disabled. Disable the GPU
+Option ROM in firmware and select onboard/BMC video as the primary display;
+otherwise firmware may initialize the GPU before the app and the card is no
+longer cold.

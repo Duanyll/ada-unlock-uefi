@@ -1,0 +1,9 @@
+ada-unlock-uefi (0.1.0) unstable; urgency=medium
+
+  * Package the UEFI application and its locally generated NVIDIA firmware.
+  * Install the application and assets into the EFI System Partition.
+  * Manage the Ada Unlock UEFI boot entry and its BootOrder position.
+  * Add or remove the pci=realloc GRUB command line for the 64 GiB BAR1 path.
+  * Restore pre-existing files and boot entries when the package is removed.
+
+ -- duanyll <duanyll@outlook.com>  Sat, 07 Nov 2026 10:30:00 +0800

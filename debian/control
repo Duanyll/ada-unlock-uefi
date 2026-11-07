@@ -1,0 +1,25 @@
+Source: ada-unlock-uefi
+Section: admin
+Priority: optional
+Maintainer: duanyll <duanyll@outlook.com>
+Build-Depends: debhelper-compat (= 13), python3
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://github.com/Duanyll/ada-unlock-uefi
+Vcs-Git: https://github.com/Duanyll/ada-unlock-uefi.git
+Vcs-Browser: https://github.com/Duanyll/ada-unlock-uefi
+
+Package: ada-unlock-uefi
+Architecture: amd64
+Depends: ${misc:Depends}, efibootmgr, grub-common, grub2-common
+Description: pre-boot Ada GPU unlock UEFI application
+ Runs before Linux on headless Debian servers and applies the AD102 tensor
+ unlock to every applicable RTX 4090 or L40. It can optionally select the
+ 64 GiB BAR1 size, then chainloads the normal Debian bootloader.
+ .
+ The package installs the unsigned UEFI application and its locally generated
+ NVIDIA firmware payloads into the EFI System Partition, manages the matching
+ UEFI boot entry, and adds pci=realloc to the GRUB command line when the 64 GiB
+ BAR1 path is selected. It is intended for internal deployment only: the
+ package payload contains NVIDIA firmware and must not be uploaded to a public
+ archive.

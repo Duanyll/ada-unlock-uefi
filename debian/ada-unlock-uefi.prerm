@@ -1,0 +1,20 @@
+#!/bin/sh
+set -e
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+case "$1" in
+    remove)
+        if command -v ada-unlockctl >/dev/null 2>&1; then
+            ada-unlockctl remove
+        fi
+        ;;
+    upgrade|deconfigure)
+        # The new package's postinst re-applies the configuration.
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

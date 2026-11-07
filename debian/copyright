@@ -1,0 +1,22 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: ada-unlock-uefi
+Source: https://github.com/Duanyll/ada-unlock-uefi
+
+Files: *
+Copyright: 2026 Duanyll
+License: GPL-2.0-only
+ This package is free software; you can redistribute it and/or modify it under
+ the terms of the GNU General Public License as published by the Free Software
+ Foundation; version 2 of the License.
+ .
+ On Debian systems, the complete text of the GNU General Public License version
+ 2 can be found in /usr/share/common-licenses/GPL-2.
+
+Files: dist/*.bin
+Copyright: 2016-2025 NVIDIA CORPORATION & AFFILIATES
+License: NVIDIA-Driver-License
+ The firmware and VBIOS blobs in the package are governed by the NVIDIA Driver
+ License Agreement. The complete license text is installed as
+ /usr/share/doc/ada-unlock-uefi/NVIDIA-DRIVER-LICENSE.txt.gz.
+ .
+ They are not covered by this repository's GPL-2.0-only license.
