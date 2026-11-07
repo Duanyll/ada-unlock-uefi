@@ -35,4 +35,12 @@ done
 # -b: binary package only (dist/ is intentionally not a source tarball)
 # -uc -us: internal package, no signing keys
 # -Zxz: compress the 84 MiB firmware asset
-exec dpkg-buildpackage -b -uc -us -Zxz "$@"
+dpkg-buildpackage -b -uc -us -Zxz "$@"
+
+version=$(dpkg-parsechangelog -S Version)
+deb="../ada-unlock-uefi_${version}_amd64.deb"
+[ -f "$deb" ] || { echo "expected $deb was not produced" >&2; exit 1; }
+
+mkdir -p out
+mv -f "$deb" "out/ada-unlock-uefi_${version}_amd64.deb"
+echo "package: out/ada-unlock-uefi_${version}_amd64.deb"

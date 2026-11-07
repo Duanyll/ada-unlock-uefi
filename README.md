@@ -108,7 +108,7 @@ firmware; do not upload the `.deb` to a public archive.
 ```sh
 make dist
 ./packaging/build-deb.sh
-sudo apt install ./ada-unlock-uefi_0.1.0_amd64.deb
+sudo apt install ./out/ada-unlock-uefi_0.1.0_amd64.deb
 sudo editor /etc/default/ada-unlock
 sudo ada-unlockctl apply
 ```

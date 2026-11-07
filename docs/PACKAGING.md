@@ -21,10 +21,10 @@ Then build the package on Debian (or a Debian container) with
 ```
 
 The script refuses to build without a complete verified `dist/`, does not
-download anything, and writes the package next to the source tree:
+download anything, and writes the package into `out/`:
 
 ```text
-../ada-unlock-uefi_0.1.0_amd64.deb
+out/ada-unlock-uefi_0.1.0_amd64.deb
 ```
 
 The EFI binary and firmware assets are not stored in git. `dist/` is a build
